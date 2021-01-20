@@ -87,6 +87,15 @@ func init() {
 	versionRegex = regexp.MustCompile(`(?i)^\s*` + regex + `\s*$`)
 }
 
+// MustParse is like Parse but panics if the version cannot be parsed.
+func MustParse(v string) Version {
+	ver, err := Parse(v)
+	if err != nil {
+		panic(err)
+	}
+	return ver
+}
+
 // Parse parses the given version and returns a new Version.
 func Parse(v string) (Version, error) {
 	matches := versionRegex.FindStringSubmatch(v)
@@ -300,8 +309,46 @@ func (v Version) String() string {
 	return buf.String()
 }
 
+// BaseVersion returns the base version
+func (v Version) BaseVersion() string {
+	var buf bytes.Buffer
+
+	// Epoch
+	if v.epoch != 0 {
+		fmt.Fprintf(&buf, "%d!", v.epoch)
+	}
+
+	// Release segment
+	fmt.Fprintf(&buf, "%d", v.release[0])
+	for _, r := range v.release[1:len(v.release)] {
+		fmt.Fprintf(&buf, ".%d", r)
+	}
+
+	return buf.String()
+}
+
 // Original returns the original parsed version as-is, including any
 // potential whitespace, `v` prefix, etc.
 func (v Version) Original() string {
 	return v.original
+}
+
+// Local returns the local version
+func (v Version) Local() string {
+	return v.local
+}
+
+// Public returns the public version
+func (v Version) Public() string {
+	return strings.SplitN(v.String(), "+", 2)[0]
+}
+
+// IsPreRelease returns if it is a pre-release
+func (v Version) IsPreRelease() bool {
+	return !v.pre.isNull() || !v.dev.isNull()
+}
+
+// IsPostRelease returns if it is a post-release
+func (v Version) IsPostRelease() bool {
+	return !v.post.isNull()
 }
