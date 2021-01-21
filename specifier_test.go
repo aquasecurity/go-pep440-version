@@ -312,6 +312,7 @@ func TestVersion_Check(t *testing.T) {
 		{"2.1", "=2.0", false},
 		{"2.1", "=2.0.0", false},
 		{"2.0", "=2.0+deadbeef", false},
+		{"2.0", "*", true},
 
 		// space separated
 		{"1.0", ">= 1.0 != 1.3.4.* < 2.0", true},

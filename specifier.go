@@ -66,6 +66,10 @@ type specifier struct {
 func NewSpecifiers(v string) (Specifiers, error) {
 	var sss [][]specifier
 	for _, vv := range strings.Split(v, "||") {
+		if strings.TrimSpace(vv) == "*" {
+			vv = ">=0.0.0"
+		}
+
 		// Validate the segment
 		if !validConstraintRegexp.MatchString(vv) {
 			return Specifiers{}, xerrors.Errorf("improper constraint: %s", vv)
