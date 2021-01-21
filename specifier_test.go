@@ -70,7 +70,7 @@ func TestNewConstraints(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.constraint, func(t *testing.T) {
-			_, err := NewConstraints(tt.constraint)
+			_, err := NewSpecifiers(tt.constraint)
 			if tt.wantErr {
 				assert.NotNil(t, err)
 			} else {
@@ -297,7 +297,7 @@ func TestVersion_Check(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.version, tt.spec), func(t *testing.T) {
-			c, err := NewConstraints(tt.spec)
+			c, err := NewSpecifiers(tt.spec)
 			require.NoError(t, err)
 
 			v, err := Parse(tt.version)

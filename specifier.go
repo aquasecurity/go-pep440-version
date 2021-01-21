@@ -31,41 +31,41 @@ var (
 
 type operatorFunc func(v Version, c string) bool
 
-type Constraints struct {
-	constraints [][]constraint
+type Specifiers struct {
+	specifiers [][]specifier
 }
 
-type constraint struct {
+type specifier struct {
 	version  string
 	operator operatorFunc
 	original string
 }
 
-// NewConstraints parses a given constraint and returns a new instance of Constraints
-func NewConstraints(v string) (Constraints, error) {
-	var css [][]constraint
+// NewSpecifiers parses a given specifier and returns a new instance of Specifiers
+func NewSpecifiers(v string) (Specifiers, error) {
+	var sss [][]specifier
 	for _, vv := range strings.Split(v, "||") {
-		var cs []constraint
+		var ss []specifier
 		for _, single := range strings.Split(vv, ",") {
-			c, err := newConstraint(single)
+			s, err := newSpecifier(single)
 			if err != nil {
-				return Constraints{}, err
+				return Specifiers{}, err
 			}
-			cs = append(cs, c)
+			ss = append(ss, s)
 		}
-		css = append(css, cs)
+		sss = append(sss, ss)
 	}
 
-	return Constraints{
-		constraints: css,
+	return Specifiers{
+		specifiers: sss,
 	}, nil
 
 }
 
-func newConstraint(c string) (constraint, error) {
-	m := specifierRegexp.FindStringSubmatch(c)
+func newSpecifier(s string) (specifier, error) {
+	m := specifierRegexp.FindStringSubmatch(s)
 	if m == nil {
-		return constraint{}, xerrors.Errorf("improper constraint: %s", c)
+		return specifier{}, xerrors.Errorf("improper specifier: %s", s)
 	}
 
 	operator := m[specifierRegexp.SubexpIndex("operator")]
@@ -73,14 +73,14 @@ func newConstraint(c string) (constraint, error) {
 
 	if operator != "===" {
 		if err := validate(operator, version); err != nil {
-			return constraint{}, err
+			return specifier{}, err
 		}
 	}
 
-	return constraint{
+	return specifier{
 		version:  version,
 		operator: specifierOperators[operator],
-		original: c,
+		original: s,
 	}, nil
 }
 
@@ -119,10 +119,10 @@ func validate(operator, version string) error {
 	return nil
 }
 
-// Check tests if a version satisfies all the constraints.
-func (cs Constraints) Check(v Version) bool {
-	for _, c := range cs.constraints {
-		if andCheck(v, c) {
+// Check tests if a version satisfies all the specifiers.
+func (ss Specifiers) Check(v Version) bool {
+	for _, s := range ss.specifiers {
+		if andCheck(v, s) {
 			return true
 		}
 	}
@@ -130,12 +130,12 @@ func (cs Constraints) Check(v Version) bool {
 	return false
 }
 
-func (c constraint) check(v Version) bool {
-	return c.operator(v, c.version)
+func (s specifier) check(v Version) bool {
+	return s.operator(v, s.version)
 }
 
-func andCheck(v Version, constraints []constraint) bool {
-	for _, c := range constraints {
+func andCheck(v Version, specifiers []specifier) bool {
+	for _, c := range specifiers {
 		if !c.check(v) {
 			return false
 		}
