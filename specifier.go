@@ -50,6 +50,7 @@ type operatorFunc func(v Version, c string) bool
 
 type Specifiers struct {
 	specifiers [][]specifier
+	conf       conf
 }
 
 type specifier struct {
@@ -59,7 +60,14 @@ type specifier struct {
 }
 
 // NewSpecifiers parses a given specifier and returns a new instance of Specifiers
-func NewSpecifiers(v string) (Specifiers, error) {
+func NewSpecifiers(v string, opts ...SpecifierOption) (Specifiers, error) {
+	c := new(conf)
+
+	// Apply options
+	for _, o := range opts {
+		o.apply(c)
+	}
+
 	var sss [][]specifier
 	for _, vv := range strings.Split(v, "||") {
 		if strings.TrimSpace(vv) == "*" {
@@ -89,6 +97,7 @@ func NewSpecifiers(v string) (Specifiers, error) {
 
 	return Specifiers{
 		specifiers: sss,
+		conf:       *c,
 	}, nil
 
 }
@@ -152,6 +161,10 @@ func validate(operator, version string) error {
 
 // Check tests if a version satisfies all the specifiers.
 func (ss Specifiers) Check(v Version) bool {
+	if ss.conf.includePreRelease {
+		v.preReleaseIncluded = true
+	}
+
 	for _, s := range ss.specifiers {
 		if andCheck(v, s) {
 			return true

@@ -333,3 +333,26 @@ func TestVersion_Check(t *testing.T) {
 		})
 	}
 }
+
+func TestVersion_CheckWithPreRelease(t *testing.T) {
+	tests := []struct {
+		version string
+		spec    string
+		want    bool
+	}{
+		{"1.3.4", "< 2.0", true},
+		{"2.0a1", "<2", true},
+		{"2.1a1", "<2", false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s %s", tt.version, tt.spec), func(t *testing.T) {
+			c, err := NewSpecifiers(tt.spec, WithPreRelease(true))
+			require.NoError(t, err)
+
+			v, err := Parse(tt.version)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want, c.Check(v))
+		})
+	}
+}

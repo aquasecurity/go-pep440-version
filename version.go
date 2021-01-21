@@ -49,14 +49,15 @@ const (
 
 // Version represents a single version.
 type Version struct {
-	epoch    part.Uint64
-	release  []part.Uint64
-	pre      letterNumber
-	post     letterNumber
-	dev      letterNumber
-	local    string
-	key      key
-	original string
+	epoch              part.Uint64
+	release            []part.Uint64
+	pre                letterNumber
+	post               letterNumber
+	dev                letterNumber
+	local              string
+	key                key
+	preReleaseIncluded bool
+	original           string
 }
 
 type key struct {
@@ -345,6 +346,9 @@ func (v Version) Public() string {
 
 // IsPreRelease returns if it is a pre-release
 func (v Version) IsPreRelease() bool {
+	if v.preReleaseIncluded {
+		return false
+	}
 	return !v.pre.isNull() || !v.dev.isNull()
 }
 
