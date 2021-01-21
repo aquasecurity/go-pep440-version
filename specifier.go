@@ -307,7 +307,7 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 }
 
 func specifierArbitrary(prospective Version, spec string) bool {
-	return strings.ToLower(prospective.String()) == strings.ToLower(spec)
+	return strings.EqualFold(prospective.String(), spec)
 }
 
 func specifierLessThanEqual(prospective Version, spec string) bool {
