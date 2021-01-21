@@ -10,10 +10,6 @@ import (
 	"golang.org/x/xerrors"
 )
 
-const (
-	specifierRegex = `(?<operator>(~=|===|==|!=|<=|>=|<|>))\s*(?<version>[^\s]*)`
-)
-
 var (
 	specifierOperators = map[string]operatorFunc{
 		"":    specifierEqual, // not defined in PEP 440
