@@ -1,6 +1,7 @@
 package version
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -10,24 +11,44 @@ import (
 )
 
 const (
-	specifierRegex = `(?P<operator>(~=|===|==|!=|<=|>=|<|>))\s*(?P<version>[^\s]*)`
+	specifierRegex = `(?<operator>(~=|===|==|!=|<=|>=|<|>))\s*(?<version>[^\s]*)`
 )
 
 var (
 	specifierOperators = map[string]operatorFunc{
+		"":    specifierEqual, // not defined in PEP 440
+		"=":   specifierEqual, // not defined in PEP 440
 		"==":  specifierEqual,
 		"!=":  specifierNotEqual,
 		">":   specifierGreaterThan,
 		"<":   specifierLessThan,
 		">=":  specifierGreaterThanEqual,
 		"<=":  specifierLessThanEqual,
-		"===": specifierArbitrary,
 		"~=":  specifierCompatible,
+		"===": specifierArbitrary,
 	}
 
-	specifierRegexp = regexp.MustCompile(`(?i)^\s*` + specifierRegex + `\s*$`)
-	prefixRegexp    = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
+	specifierRegexp       *regexp.Regexp
+	validConstraintRegexp *regexp.Regexp
+	prefixRegexp          *regexp.Regexp
 )
+
+func init() {
+	ops := make([]string, 0, len(specifierOperators))
+	for k := range specifierOperators {
+		ops = append(ops, regexp.QuoteMeta(k))
+	}
+
+	specifierRegexp = regexp.MustCompile(fmt.Sprintf(
+		`(?i)(?P<operator>(%s))\s*(?P<version>%s(\.\*)?)`,
+		strings.Join(ops, "|"), regex))
+
+	validConstraintRegexp = regexp.MustCompile(fmt.Sprintf(
+		`^\s*(\s*(%s)\s*(%s(\.\*)?)\s*\,?)*\s*$`,
+		strings.Join(ops, "|"), regex))
+
+	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
+}
 
 type operatorFunc func(v Version, c string) bool
 
@@ -45,15 +66,25 @@ type specifier struct {
 func NewSpecifiers(v string) (Specifiers, error) {
 	var sss [][]specifier
 	for _, vv := range strings.Split(v, "||") {
-		var ss []specifier
-		for _, single := range strings.Split(vv, ",") {
+		// Validate the segment
+		if !validConstraintRegexp.MatchString(vv) {
+			return Specifiers{}, xerrors.Errorf("improper constraint: %s", vv)
+		}
+
+		ss := specifierRegexp.FindAllString(vv, -1)
+		if ss == nil {
+			ss = append(ss, strings.TrimSpace(vv))
+		}
+
+		var specs []specifier
+		for _, single := range ss {
 			s, err := newSpecifier(single)
 			if err != nil {
 				return Specifiers{}, err
 			}
-			ss = append(ss, s)
+			specs = append(specs, s)
 		}
-		sss = append(sss, ss)
+		sss = append(sss, specs)
 	}
 
 	return Specifiers{
@@ -96,7 +127,7 @@ func validate(operator, version string) error {
 	}
 
 	switch operator {
-	case "==", "!=":
+	case "", "=", "==", "!=":
 		if hasWildcard && (!v.dev.isNull() || v.local != "") {
 			return xerrors.New("the (non)equality operators don't allow to use a wild card and a dev" +
 				" or local version together")

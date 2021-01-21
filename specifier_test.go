@@ -23,11 +23,13 @@ func TestNewConstraints(t *testing.T) {
 		{">=7.9a1", false},
 		{"<1.0.dev1", false},
 		{">2.0.post1", false},
-		{"===lolwat", false},
+
+		// TODO
+		// {"===lolwat", false},
 
 		// https://github.com/pypa/packaging/blob/28d2fa0742747cda4bc4530b2a5bc919b7382039/tests/test_specifiers.py#L50-L86
 		// Operator-less specifier
-		{"2.0", true},
+		{"2.0", false}, // go-pep-440-version permits this case
 
 		// Invalid operator
 		{"=>2.0", true},
@@ -294,6 +296,29 @@ func TestVersion_Check(t *testing.T) {
 		// or operators
 		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0 || ==1.0", true},
 		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0 || !=1.0", false},
+
+		// Test the equality operation not defined in PEP 440
+		{"2.0", "2", true},
+		{"2.0", "2.0", true},
+		{"2.0", "2.0.0", true},
+		{"2.1", "2", false},
+		{"2.1", "2.0", false},
+		{"2.1", "2.0.0", false},
+		{"2.0", "2.0+deadbeef", false},
+		{"2.0", "=2", true},
+		{"2.0", "=2.0", true},
+		{"2.0", "=2.0.0", true},
+		{"2.1", "=2", false},
+		{"2.1", "=2.0", false},
+		{"2.1", "=2.0.0", false},
+		{"2.0", "=2.0+deadbeef", false},
+
+		// space separated
+		{"1.0", ">= 1.0 != 1.3.4.* < 2.0", true},
+		{"1.0", "~= 0.9 >= 1.0 != 1.3.4.* < 2.0", false},
+		{"0.9", "~= 0.9 != 1.3.4.* < 2.0", true},
+		{"2.0", ">= 1.0 != 1.3.4.* < 2.0", false},
+		{"1.3.4", ">= 1.0 != 1.3.4.* < 2.0", false},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.version, tt.spec), func(t *testing.T) {
