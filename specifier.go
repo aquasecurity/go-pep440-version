@@ -134,6 +134,24 @@ func (s specifier) check(v Version) bool {
 	return s.operator(v, s.version)
 }
 
+func (s specifier) String() string {
+	return s.original
+}
+
+// String returns the string format of the specifiers
+func (ss Specifiers) String() string {
+	var ssStr []string
+	for _, orS := range ss.specifiers {
+		var sstr []string
+		for _, andS := range orS {
+			sstr = append(sstr, andS.String())
+		}
+		ssStr = append(ssStr, strings.Join(sstr, ","))
+	}
+
+	return strings.Join(ssStr, "||")
+}
+
 func andCheck(v Version, specifiers []specifier) bool {
 	for _, c := range specifiers {
 		if !c.check(v) {
