@@ -276,12 +276,24 @@ func TestVersion_Check(t *testing.T) {
 		{"1.0", "==2!1.*", false},
 		{"2!1.0", "!=2!1.0", false},
 
+		// local versions
 		{"1.0.0+local", "==1.0.0", true},
 		{"1.0.0+local", "!=1.0.0", false},
 		{"1.0.0+local", "<=1.0.0", true},
 		{"1.0.0+local", ">=1.0.0", true},
 		{"1.0.0+local", "<1.0.0", false},
 		{"1.0.0+local", ">1.0.0", false},
+
+		// and operators
+		{"1.0", ">= 1.0, != 1.3.4.*, < 2.0", true},
+		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0", false},
+		{"0.9", "~= 0.9, != 1.3.4.*, < 2.0", true},
+		{"2.0", ">= 1.0, != 1.3.4.*, < 2.0", false},
+		{"1.3.4", ">= 1.0, != 1.3.4.*, < 2.0", false},
+
+		// or operators
+		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0 || ==1.0", true},
+		{"1.0", "~= 0.9, >= 1.0, != 1.3.4.*, < 2.0 || !=1.0", false},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.version, tt.spec), func(t *testing.T) {
