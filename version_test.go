@@ -1,6 +1,8 @@
 package version_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -327,4 +329,27 @@ func parseVersions(t *testing.T, s1, s2 string) (version.Version, version.Versio
 	require.NoError(t, err)
 
 	return v1, v2
+}
+
+func TestVersion_JSON(t *testing.T) {
+	versionString := "1.0.post456.dev34"
+	v := version.MustParse(versionString)
+
+	jsonString := fmt.Sprintf(`{"version": "%s"}`, versionString)
+	type vs struct {
+		Version version.Version `json:"version"`
+	}
+
+	t.Run("Unmarshal", func(t *testing.T) {
+		fromJson := vs{}
+		if err := json.Unmarshal([]byte(jsonString), &fromJson); assert.NoError(t, err) {
+			assert.Equal(t, vs{Version: v}, fromJson)
+		}
+	})
+
+	t.Run("Marshal", func(t *testing.T) {
+		if toJson, err := json.Marshal(vs{Version: v}); assert.NoError(t, err) {
+			assert.JSONEq(t, jsonString, string(toJson))
+		}
+	})
 }
