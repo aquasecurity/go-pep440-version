@@ -282,9 +282,11 @@ func (v Version) String() string {
 	}
 
 	// Release segment
-	fmt.Fprintf(&buf, "%d", v.release[0])
-	for _, r := range v.release[1:len(v.release)] {
-		fmt.Fprintf(&buf, ".%d", r)
+	if len(v.release) != 0 {
+		fmt.Fprintf(&buf, "%d", v.release[0])
+		for _, r := range v.release[1:] {
+			fmt.Fprintf(&buf, ".%d", r)
+		}
 	}
 
 	// Pre-release
@@ -320,9 +322,11 @@ func (v Version) BaseVersion() string {
 	}
 
 	// Release segment
-	fmt.Fprintf(&buf, "%d", v.release[0])
-	for _, r := range v.release[1:len(v.release)] {
-		fmt.Fprintf(&buf, ".%d", r)
+	if len(v.release) != 0 {
+		fmt.Fprintf(&buf, "%d", v.release[0])
+		for _, r := range v.release[1:] {
+			fmt.Fprintf(&buf, ".%d", r)
+		}
 	}
 
 	return buf.String()

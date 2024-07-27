@@ -226,6 +226,10 @@ func TestVersion_String(t *testing.T) {
 			assert.Equal(t, tt.want, v.String())
 		})
 	}
+	t.Run("Zero Value", func(t *testing.T) {
+		v := version.Version{}
+		assert.Equal(t, "", v.String())
+	})
 }
 
 func TestVersion_LessThan_LessThanOrEqual(t *testing.T) {
