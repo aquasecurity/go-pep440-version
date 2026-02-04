@@ -356,3 +356,102 @@ func TestVersion_CheckWithPreRelease(t *testing.T) {
 		})
 	}
 }
+
+func TestVersion_CheckWithLocalVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		spec    string
+		want    bool
+	}{
+		// Basic local version comparison with >=
+		{"gte with matching local", "3.2.25+local.1", ">= 3.2.25+local.1", true},
+		{"gte with higher local", "3.2.25+local.2", ">= 3.2.25+local.1", true},
+		{"gte with lower local", "3.2.25+local.0", ">= 3.2.25+local.1", false},
+		{"gte with higher release", "3.2.26+local.1", ">= 3.2.25+local.1", true},
+		{"gte with lower release", "3.2.24+local.1", ">= 3.2.25+local.1", false},
+
+		// Basic local version comparison with <=
+		{"lte with matching local", "3.2.25+local.1", "<= 3.2.25+local.1", true},
+		{"lte with higher local", "3.2.25+local.2", "<= 3.2.25+local.1", false},
+		{"lte with lower local", "3.2.25+local.0", "<= 3.2.25+local.1", true},
+
+		// Basic local version comparison with >
+		{"gt with matching local", "3.2.25+local.1", "> 3.2.25+local.1", false},
+		{"gt with higher local", "3.2.25+local.2", "> 3.2.25+local.1", true},
+		{"gt with lower local", "3.2.25+local.0", "> 3.2.25+local.1", false},
+
+		// Basic local version comparison with <
+		{"lt with matching local", "3.2.25+local.1", "< 3.2.25+local.1", false},
+		{"lt with higher local", "3.2.25+local.2", "< 3.2.25+local.1", false},
+		{"lt with lower local", "3.2.25+local.0", "< 3.2.25+local.1", true},
+
+		// Range with local versions
+		{"range with local in bounds", "3.2.25+local.1", ">= 3.2.25+local.1, < 4.0.0", true},
+		{"range with local higher", "3.2.25+local.5", ">= 3.2.25+local.1, < 4.0.0", true},
+		{"range with local lower", "3.2.25+local.0", ">= 3.2.25+local.1, < 4.0.0", false},
+		{"range with release higher", "3.3.0+local.1", ">= 3.2.25+local.1, < 4.0.0", true},
+		{"range with release too high", "4.0.0+local.1", ">= 3.2.25+local.1, < 4.0.0", false},
+
+		// Compatible operator with local
+		{"compatible with local", "1.5.0+local.1", "~= 1.4+local.1", true},
+		{"compatible with local lower", "1.3.0+local.1", "~= 1.4+local.1", false},
+
+		// Version without local against spec with local
+		{"no local version against local spec", "3.2.25", ">= 3.2.25+local.1", false},
+		{"no local version higher release", "3.2.26", ">= 3.2.25+local.1", true},
+
+		// Strict equality with local versions (WithLocalVersion changes behavior)
+		{"eq local vs no local in spec", "2.0.0+local", "== 2.0.0", false},
+		{"eq no local vs local in spec", "2.0.0", "== 2.0.0+local", false},
+		{"eq matching local", "2.0.0+local", "== 2.0.0+local", true},
+		{"eq different local", "2.0.0+local.1", "== 2.0.0+local.2", false},
+		{"eq no local both sides", "2.0.0", "== 2.0.0", true},
+
+		// Strict inequality with local versions
+		{"ne local vs no local in spec", "2.0.0+local", "!= 2.0.0", true},
+		{"ne no local vs local in spec", "2.0.0", "!= 2.0.0+local", true},
+		{"ne matching local", "2.0.0+local", "!= 2.0.0+local", false},
+		{"ne different local", "2.0.0+local.1", "!= 2.0.0+local.2", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := NewSpecifiers(tt.spec, WithLocalVersion(true))
+			require.NoError(t, err)
+
+			v, err := Parse(tt.version)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want, c.Check(v))
+		})
+	}
+}
+
+func TestWithLocalVersion_SpecifierValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    string
+		wantErr bool
+	}{
+		// These should work with WithLocalVersion
+		{"gte with local", ">= 1.0+local", false},
+		{"lte with local", "<= 1.0+local", false},
+		{"gt with local", "> 1.0+local", false},
+		{"lt with local", "< 1.0+local", false},
+		{"compatible with local", "~= 1.0+local", false},
+
+		// These already work without WithLocalVersion
+		{"eq with local", "== 1.0+local", false},
+		{"ne with local", "!= 1.0+local", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewSpecifiers(tt.spec, WithLocalVersion(true))
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

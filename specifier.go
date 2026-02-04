@@ -46,7 +46,7 @@ func init() {
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
 }
 
-type operatorFunc func(v Version, c string) bool
+type operatorFunc func(v Version, c string, allowLocalVersion bool) bool
 
 type Specifiers struct {
 	specifiers [][]specifier
@@ -54,9 +54,10 @@ type Specifiers struct {
 }
 
 type specifier struct {
-	version  string
-	operator operatorFunc
-	original string
+	version           string
+	operator          operatorFunc
+	original          string
+	allowLocalVersion bool
 }
 
 // NewSpecifiers parses a given specifier and returns a new instance of Specifiers
@@ -86,7 +87,7 @@ func NewSpecifiers(v string, opts ...SpecifierOption) (Specifiers, error) {
 
 		var specs []specifier
 		for _, single := range ss {
-			s, err := newSpecifier(single)
+			s, err := newSpecifier(single, c)
 			if err != nil {
 				return Specifiers{}, err
 			}
@@ -102,7 +103,7 @@ func NewSpecifiers(v string, opts ...SpecifierOption) (Specifiers, error) {
 
 }
 
-func newSpecifier(s string) (specifier, error) {
+func newSpecifier(s string, c *conf) (specifier, error) {
 	m := specifierRegexp.FindStringSubmatch(s)
 	if m == nil {
 		return specifier{}, xerrors.Errorf("improper specifier: %s", s)
@@ -112,19 +113,20 @@ func newSpecifier(s string) (specifier, error) {
 	version := m[specifierRegexp.SubexpIndex("version")]
 
 	if operator != "===" {
-		if err := validate(operator, version); err != nil {
+		if err := validate(operator, version, c); err != nil {
 			return specifier{}, err
 		}
 	}
 
 	return specifier{
-		version:  version,
-		operator: specifierOperators[operator],
-		original: s,
+		version:           version,
+		operator:          specifierOperators[operator],
+		original:          s,
+		allowLocalVersion: c != nil && c.allowLocalVersion,
 	}, nil
 }
 
-func validate(operator, version string) error {
+func validate(operator, version string, c *conf) error {
 	hasWildcard := false
 	if strings.HasSuffix(version, ".*") {
 		hasWildcard = true
@@ -134,6 +136,8 @@ func validate(operator, version string) error {
 	if err != nil {
 		return xerrors.Errorf("version parse error (%s): %w", v, err)
 	}
+
+	allowLocal := c != nil && c.allowLocalVersion
 
 	switch operator {
 	case "", "=", "==", "!=":
@@ -146,13 +150,13 @@ func validate(operator, version string) error {
 			return xerrors.New("a wild card is not allowed")
 		} else if len(v.release) < 2 {
 			return xerrors.New("the compatible operator requires at least two digits in the release segment")
-		} else if v.local != "" {
+		} else if v.local != "" && !allowLocal {
 			return xerrors.New("local versions cannot be specified")
 		}
 	default:
 		if hasWildcard {
 			return xerrors.New("a wild card is not allowed")
-		} else if v.local != "" {
+		} else if v.local != "" && !allowLocal {
 			return xerrors.New("local versions cannot be specified")
 		}
 	}
@@ -175,7 +179,7 @@ func (ss Specifiers) Check(v Version) bool {
 }
 
 func (s specifier) check(v Version) bool {
-	return s.operator(v, s.version)
+	return s.operator(v, s.version, s.allowLocalVersion)
 }
 
 func (s specifier) String() string {
@@ -257,13 +261,18 @@ func padVersion(left, right []string) ([]string, []string) {
 // Specifier functions
 //-------------------------------------------------------------------
 
-func specifierCompatible(prospective Version, spec string) bool {
+func specifierCompatible(prospective Version, spec string, allowLocalVersion bool) bool {
 	// Compatible releases have an equivalent combination of >= and ==. That is that ~=2.2 is equivalent to >=2.2,==2.*.
 	// This allows us to implement this in terms of the other specifiers instead of implementing it ourselves.
 	// The only thing we need to do is construct the other specifiers.
 
+	// For prefix matching, we need to use the public version (without local segment).
+	// The local segment is only relevant for the >= comparison.
+	specVersion := MustParse(spec)
+	publicSpec := specVersion.Public()
+
 	var prefixElements []string
-	for _, s := range versionSplit(spec) {
+	for _, s := range versionSplit(publicSpec) {
 		if strings.HasPrefix(s, "post") || strings.HasPrefix(s, "dev") {
 			break
 		}
@@ -277,10 +286,10 @@ func specifierCompatible(prospective Version, spec string) bool {
 	// Add the prefix notation to the end of our string
 	prefix += ".*"
 
-	return specifierGreaterThanEqual(prospective, spec) && specifierEqual(prospective, prefix)
+	return specifierGreaterThanEqual(prospective, spec, allowLocalVersion) && specifierEqual(prospective, prefix, allowLocalVersion)
 }
 
-func specifierEqual(prospective Version, spec string) bool {
+func specifierEqual(prospective Version, spec string, allowLocalVersion bool) bool {
 	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/specifiers.py#L476
 	// We need special logic to handle prefix matching
 	if strings.HasSuffix(spec, ".*") {
@@ -307,20 +316,27 @@ func specifierEqual(prospective Version, spec string) bool {
 	}
 
 	specVersion := MustParse(spec)
-	if specVersion.local == "" {
+	// When allowLocalVersion is disabled and spec has no local, strip local from prospective (PEP 440 default).
+	// When allowLocalVersion is enabled, keep local for strict comparison.
+	if !allowLocalVersion && specVersion.local == "" {
 		prospective = MustParse(prospective.Public())
 	}
 
 	return specVersion.Equal(prospective)
 }
 
-func specifierNotEqual(prospective Version, spec string) bool {
-	return !specifierEqual(prospective, spec)
+func specifierNotEqual(prospective Version, spec string, allowLocalVersion bool) bool {
+	return !specifierEqual(prospective, spec, allowLocalVersion)
 }
 
-func specifierLessThan(prospective Version, spec string) bool {
+func specifierLessThan(prospective Version, spec string, allowLocalVersion bool) bool {
 	// Convert our spec to a Version instance, since we'll want to work with it as a version.
 	s := MustParse(spec)
+
+	// When allowLocalVersion is disabled, strip local from prospective for comparison (like packaging does).
+	if !allowLocalVersion && prospective.local != "" {
+		prospective = MustParse(prospective.Public())
+	}
 
 	// Check to see if the prospective version is less than the spec version.
 	// If it's not we can short circuit and just return False now instead of doing extra unneeded work.
@@ -339,7 +355,7 @@ func specifierLessThan(prospective Version, spec string) bool {
 	return true
 }
 
-func specifierGreaterThan(prospective Version, spec string) bool {
+func specifierGreaterThan(prospective Version, spec string, allowLocalVersion bool) bool {
 	// Convert our spec to a Version instance, since we'll want to work with it as a version.
 	s := MustParse(spec)
 
@@ -359,8 +375,9 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 	}
 
 	// Ensure that we do not allow a local version of the version mentioned
-	//  in the specifier, which is technically greater than, to match.
-	if prospective.local != "" {
+	// in the specifier, which is technically greater than, to match.
+	// Skip this check when allowLocalVersion is enabled since we want to compare local versions.
+	if !allowLocalVersion && prospective.local != "" {
 		if MustParse(prospective.BaseVersion()).Equal(MustParse(s.BaseVersion())) {
 			return false
 		}
@@ -368,18 +385,24 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 	return true
 }
 
-func specifierArbitrary(prospective Version, spec string) bool {
+func specifierArbitrary(prospective Version, spec string, _ bool) bool {
 	return strings.EqualFold(prospective.String(), spec)
 }
 
-func specifierLessThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
+func specifierLessThanEqual(prospective Version, spec string, allowLocalVersion bool) bool {
+	p := prospective
+	if !allowLocalVersion {
+		p = MustParse(prospective.Public())
+	}
 	s := MustParse(spec)
 	return p.LessThanOrEqual(s)
 }
 
-func specifierGreaterThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
+func specifierGreaterThanEqual(prospective Version, spec string, allowLocalVersion bool) bool {
+	p := prospective
+	if !allowLocalVersion {
+		p = MustParse(prospective.Public())
+	}
 	s := MustParse(spec)
 	return p.GreaterThanOrEqual(s)
 }
