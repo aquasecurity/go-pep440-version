@@ -357,7 +357,7 @@ func TestVersion_CheckWithPreRelease(t *testing.T) {
 	}
 }
 
-func TestVersion_CheckWithLocalVersion(t *testing.T) {
+func TestVersion_CheckAllowLocalSpecifier(t *testing.T) {
 	tests := []struct {
 		name    string
 		version string
@@ -416,7 +416,7 @@ func TestVersion_CheckWithLocalVersion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := NewSpecifiers(tt.spec, WithLocalVersion(true))
+			c, err := NewSpecifiers(tt.spec, AllowLocalSpecifier(true))
 			require.NoError(t, err)
 
 			v, err := Parse(tt.version)
@@ -427,26 +427,26 @@ func TestVersion_CheckWithLocalVersion(t *testing.T) {
 	}
 }
 
-func TestWithLocalVersion_SpecifierValidation(t *testing.T) {
+func TestAllowLocalSpecifier_SpecifierValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		spec    string
 		wantErr bool
 	}{
-		// These should work with WithLocalVersion
+		// These should work with AllowLocalSpecifier
 		{"gte with local", ">= 1.0+local", false},
 		{"lte with local", "<= 1.0+local", false},
 		{"gt with local", "> 1.0+local", false},
 		{"lt with local", "< 1.0+local", false},
 		{"compatible with local", "~= 1.0+local", false},
 
-		// These already work without WithLocalVersion
+		// These already work without AllowLocalSpecifier
 		{"eq with local", "== 1.0+local", false},
 		{"ne with local", "!= 1.0+local", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewSpecifiers(tt.spec, WithLocalVersion(true))
+			_, err := NewSpecifiers(tt.spec, AllowLocalSpecifier(true))
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
