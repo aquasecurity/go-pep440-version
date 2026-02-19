@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/aquasecurity/go-pep440-version"
+	version "github.com/aquasecurity/go-pep440-version"
 )
 
 var (
