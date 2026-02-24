@@ -10,18 +10,25 @@ import (
 	"golang.org/x/xerrors"
 )
 
+type operatorFunc func(v Version, spec string) bool
+
+type operator struct {
+	op    string
+	match operatorFunc
+}
+
 var (
-	specifierOperators = map[string]operatorFunc{
-		"":    specifierEqual, // not defined in PEP 440
-		"=":   specifierEqual, // not defined in PEP 440
-		"==":  specifierEqual,
-		"!=":  specifierNotEqual,
-		">":   specifierGreaterThan,
-		"<":   specifierLessThan,
-		">=":  specifierGreaterThanEqual,
-		"<=":  specifierLessThanEqual,
-		"~=":  specifierCompatible,
-		"===": specifierArbitrary,
+	specifierOperators = map[string]operator{
+		"":    {op: "", match: specifierEqual},  // not defined in PEP 440
+		"=":   {op: "=", match: specifierEqual}, // not defined in PEP 440
+		"==":  {op: "==", match: specifierEqual},
+		"!=":  {op: "!=", match: specifierNotEqual},
+		">":   {op: ">", match: specifierGreaterThan},
+		"<":   {op: "<", match: specifierLessThan},
+		">=":  {op: ">=", match: specifierGreaterThanEqual},
+		"<=":  {op: "<=", match: specifierLessThanEqual},
+		"~=":  {op: "~=", match: specifierCompatible},
+		"===": {op: "===", match: specifierArbitrary},
 	}
 
 	specifierRegexp       *regexp.Regexp
@@ -46,17 +53,16 @@ func init() {
 	prefixRegexp = regexp.MustCompile(`^([0-9]+)((?:a|b|c|rc)[0-9]+)$`)
 }
 
-type operatorFunc func(v Version, c string) bool
-
 type Specifiers struct {
 	specifiers [][]specifier
 	conf       conf
 }
 
 type specifier struct {
-	version  string
-	operator operatorFunc
-	original string
+	version             string
+	operator            operator
+	original            string
+	allowLocalSpecifier bool
 }
 
 // NewSpecifiers parses a given specifier and returns a new instance of Specifiers
@@ -86,7 +92,7 @@ func NewSpecifiers(v string, opts ...SpecifierOption) (Specifiers, error) {
 
 		var specs []specifier
 		for _, single := range ss {
-			s, err := newSpecifier(single)
+			s, err := newSpecifier(single, c)
 			if err != nil {
 				return Specifiers{}, err
 			}
@@ -102,29 +108,30 @@ func NewSpecifiers(v string, opts ...SpecifierOption) (Specifiers, error) {
 
 }
 
-func newSpecifier(s string) (specifier, error) {
+func newSpecifier(s string, c *conf) (specifier, error) {
 	m := specifierRegexp.FindStringSubmatch(s)
 	if m == nil {
 		return specifier{}, xerrors.Errorf("improper specifier: %s", s)
 	}
 
-	operator := m[specifierRegexp.SubexpIndex("operator")]
+	op := m[specifierRegexp.SubexpIndex("operator")]
 	version := m[specifierRegexp.SubexpIndex("version")]
 
-	if operator != "===" {
-		if err := validate(operator, version); err != nil {
+	if op != "===" {
+		if err := validate(op, version, c); err != nil {
 			return specifier{}, err
 		}
 	}
 
 	return specifier{
-		version:  version,
-		operator: specifierOperators[operator],
-		original: s,
+		version:             version,
+		operator:            specifierOperators[op],
+		original:            s,
+		allowLocalSpecifier: c != nil && c.allowLocalSpecifier,
 	}, nil
 }
 
-func validate(operator, version string) error {
+func validate(op, version string, c *conf) error {
 	hasWildcard := false
 	if strings.HasSuffix(version, ".*") {
 		hasWildcard = true
@@ -135,7 +142,9 @@ func validate(operator, version string) error {
 		return xerrors.Errorf("version parse error (%s): %w", v, err)
 	}
 
-	switch operator {
+	allowLocal := c != nil && c.allowLocalSpecifier
+
+	switch op {
 	case "", "=", "==", "!=":
 		if hasWildcard && (!v.dev.isNull() || v.local != "") {
 			return xerrors.New("the (non)equality operators don't allow to use a wild card and a dev" +
@@ -146,13 +155,13 @@ func validate(operator, version string) error {
 			return xerrors.New("a wild card is not allowed")
 		} else if len(v.release) < 2 {
 			return xerrors.New("the compatible operator requires at least two digits in the release segment")
-		} else if v.local != "" {
+		} else if v.local != "" && !allowLocal {
 			return xerrors.New("local versions cannot be specified")
 		}
 	default:
 		if hasWildcard {
 			return xerrors.New("a wild card is not allowed")
-		} else if v.local != "" {
+		} else if v.local != "" && !allowLocal {
 			return xerrors.New("local versions cannot be specified")
 		}
 	}
@@ -175,7 +184,32 @@ func (ss Specifiers) Check(v Version) bool {
 }
 
 func (s specifier) check(v Version) bool {
-	return s.operator(v, s.version)
+	if !s.allowLocalSpecifier {
+		v = s.stripLocal(v)
+	}
+	return s.operator.match(v, s.version)
+}
+
+// stripLocal strips the local version segment from the prospective version
+// according to PEP 440 rules for the given operator.
+func (s specifier) stripLocal(v Version) Version {
+	if v.local == "" {
+		return v
+	}
+	switch s.operator.op {
+	case "==", "!=", "=", "":
+		// PEP 440: for (non-)equality, only strip local if the spec has no local segment.
+		// When the spec includes a local segment, the candidate's local must match exactly.
+		spec := strings.TrimSuffix(s.version, ".*")
+		if MustParse(spec).local != "" {
+			return v
+		}
+		return MustParse(v.Public())
+	case "===":
+		return v
+	default: // >=, <=, >, <, ~=
+		return MustParse(v.Public())
+	}
 }
 
 func (s specifier) String() string {
@@ -262,8 +296,13 @@ func specifierCompatible(prospective Version, spec string) bool {
 	// This allows us to implement this in terms of the other specifiers instead of implementing it ourselves.
 	// The only thing we need to do is construct the other specifiers.
 
+	// For prefix matching, we need to use the public version (without local segment).
+	// The local segment is only relevant for the >= comparison.
+	specVersion := MustParse(spec)
+	publicSpec := specVersion.Public()
+
 	var prefixElements []string
-	for _, s := range versionSplit(spec) {
+	for _, s := range versionSplit(publicSpec) {
 		if strings.HasPrefix(s, "post") || strings.HasPrefix(s, "dev") {
 			break
 		}
@@ -307,10 +346,6 @@ func specifierEqual(prospective Version, spec string) bool {
 	}
 
 	specVersion := MustParse(spec)
-	if specVersion.local == "" {
-		prospective = MustParse(prospective.Public())
-	}
-
 	return specVersion.Equal(prospective)
 }
 
@@ -358,13 +393,6 @@ func specifierGreaterThan(prospective Version, spec string) bool {
 		}
 	}
 
-	// Ensure that we do not allow a local version of the version mentioned
-	//  in the specifier, which is technically greater than, to match.
-	if prospective.local != "" {
-		if MustParse(prospective.BaseVersion()).Equal(MustParse(s.BaseVersion())) {
-			return false
-		}
-	}
 	return true
 }
 
@@ -373,13 +401,11 @@ func specifierArbitrary(prospective Version, spec string) bool {
 }
 
 func specifierLessThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
 	s := MustParse(spec)
-	return p.LessThanOrEqual(s)
+	return prospective.LessThanOrEqual(s)
 }
 
 func specifierGreaterThanEqual(prospective Version, spec string) bool {
-	p := MustParse(prospective.Public())
 	s := MustParse(spec)
-	return p.GreaterThanOrEqual(s)
+	return prospective.GreaterThanOrEqual(s)
 }
