@@ -206,6 +206,9 @@ func TestVersion_String(t *testing.T) {
 		{"1.0-rev5", "1.0.post5"},
 		// Local version case insensitivity
 		{"1.0+AbC", "1.0+abc"},
+		// Local version separator normalization
+		{"1.0+ubuntu-1", "1.0+ubuntu.1"},
+		{"1.0+ubuntu_1", "1.0+ubuntu.1"},
 		// Integer Normalization
 		{"1.01", "1.1"},
 		{"1.0a05", "1.0a5"},
@@ -283,6 +286,22 @@ func TestVersion_Equal(t *testing.T) {
 			assert.True(t, v1.Equal(v2))
 		})
 	}
+}
+
+func TestVersion_LocalVersionSeparators(t *testing.T) {
+	canonical := version.MustParse("1.0+ubuntu.1")
+	for _, original := range []string{"1.0+ubuntu-1", "1.0+ubuntu_1", "1.0+ubuntu.1"} {
+		t.Run(original, func(t *testing.T) {
+			parsed := version.MustParse(original)
+
+			assert.True(t, canonical.Equal(parsed))
+			assert.Equal(t, original, parsed.Original())
+		})
+	}
+
+	lower := version.MustParse("1.0+ubuntu-2")
+	higher := version.MustParse("1.0+ubuntu-10")
+	assert.True(t, lower.LessThan(higher))
 }
 
 func TestVersion_GreaterThan(t *testing.T) {

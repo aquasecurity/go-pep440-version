@@ -13,7 +13,8 @@ import (
 
 var (
 	// The compiled regular expression used to test the validity of a version.
-	versionRegex *regexp.Regexp
+	versionRegex           *regexp.Regexp
+	localVersionSeparators = strings.NewReplacer("-", ".", "_", ".")
 
 	// https://github.com/pypa/packaging/blob/a6407e3a7e19bd979e93f58cfc7f6641a7378c46/packaging/version.py#L459-L464
 	preReleaseAliases = map[string]string{
@@ -145,7 +146,7 @@ func Parse(v string) (Version, error) {
 		case "dev_n":
 			devN, err = part.NewUint64(m)
 		case "local":
-			local = strings.ToLower(m)
+			local = localVersionSeparators.Replace(strings.ToLower(m))
 		}
 		if err != nil {
 			return Version{}, xerrors.Errorf("failed to parse version (%s): %w", v, err)
