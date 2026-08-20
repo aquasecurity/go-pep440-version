@@ -93,6 +93,8 @@ func TestParseInvalidVersion(t *testing.T) {
 		"1.0+_foobar",
 		"1.0+foo&asd",
 		"1.0+1+1",
+		"1.0+ſ",
+		"1.0+K",
 	}
 	for _, v := range versions {
 		t.Run(v, func(t *testing.T) {

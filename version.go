@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"golang.org/x/xerrors"
 
@@ -99,6 +100,12 @@ func MustParse(v string) Version {
 
 // Parse parses the given version and returns a new Version.
 func Parse(v string) (Version, error) {
+	for _, r := range v {
+		if r > unicode.MaxASCII {
+			return Version{}, xerrors.Errorf("malformed version: %s", v)
+		}
+	}
+
 	matches := versionRegex.FindStringSubmatch(v)
 	if matches == nil {
 		return Version{}, xerrors.Errorf("malformed version: %s", v)
